@@ -2,13 +2,20 @@
 
 #include <csignal>
 #include <fstream>
-#include <experimental/filesystem>
-using namespace std::experimental;
 
-GPGHelper::GPGHelper() {
-    NULLABLE_CALL(mkdtemp, tmpdir);
+static filesystem::path mkdtemp_wrapper() {
+    std::string path_tpl = filesystem::temp_directory_path() / ".libgpgme.XXXXXX";
+    std::vector<char> path_vec(path_tpl.begin(), path_tpl.end());
+    path_vec.push_back('\0');
+
+    NULLABLE_CALL(mkdtemp, path_vec.data());
+    return path_vec.data();
+};
+
+GPGHelper::GPGHelper():
+        tmpdir(mkdtemp_wrapper()) {
     GPGME_CALL(gpgme_new, &ctx);
-    GPGME_CALL(gpgme_ctx_set_engine_info, ctx, GPGME_PROTOCOL_OpenPGP, NULL, tmpdir);
+    GPGME_CALL(gpgme_ctx_set_engine_info, ctx, GPGME_PROTOCOL_OpenPGP, NULL, tmpdir.c_str());
 }
 
 GPGHelper::~GPGHelper() {
@@ -48,6 +55,20 @@ void GPGHelper::delete_key(std::string user_id) {
         GPGME_CALL(gpgme_op_delete_ext, ctx, key, GPGME_DELETE_ALLOW_SECRET | GPGME_DELETE_FORCE);
         gpgme_key_unref(key);
     }
+
+    // workaround for growing pubring and revoke certs
+    filesystem::remove_all(tmpdir / "openpgp-revocs.d");
+
+    std::uintmax_t pubring_size;
+
+    try {
+        pubring_size = filesystem::file_size(tmpdir / "pubring.kbx");
+    } catch (const filesystem::filesystem_error &e) {
+        pubring_size = 0;
+    }
+
+    if (pubring_size > 131072)
+        reset_tmpdir();
 }
 
 std::vector<uint8_t> GPGHelper::load_pubkey(std::string user_id) {
@@ -120,6 +141,27 @@ void GPGHelper::change_keytime(std::vector<uint8_t> &key, uint32_t key_time) {
     *(it++) = (key_time >> 16) & 0xFF;
     *(it++) = (key_time >> 8) & 0xFF;
     *(it++) = key_time & 0xFF;
+}
+
+void GPGHelper::reset_tmpdir() {
+    auto new_tmpdir = mkdtemp_wrapper();
+    gpgme_ctx_t new_ctx;
+    gpgme_data_t data;
+
+    GPGME_CALL(gpgme_new, &new_ctx);
+    GPGME_CALL(gpgme_ctx_set_engine_info, new_ctx, GPGME_PROTOCOL_OpenPGP, NULL, new_tmpdir.c_str());
+
+    GPGME_CALL(gpgme_data_new, &data);
+    GPGME_CALL(gpgme_op_export, ctx, NULL, GPGME_EXPORT_MODE_SECRET, data);
+    gpgme_data_seek(data, 0, SEEK_SET);
+    GPGME_CALL(gpgme_op_import, new_ctx, data);
+
+    gpgme_data_release(data);
+    gpgme_release(ctx);
+    filesystem::remove_all(tmpdir);
+
+    tmpdir = new_tmpdir;
+    ctx = new_ctx;
 }
 
 GPGWorker::GPGWorker(size_t n_thread, const std::string &algo):

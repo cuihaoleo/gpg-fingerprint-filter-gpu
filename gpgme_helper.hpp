@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 #include <thread>
+#include <experimental/filesystem>
 
 #include <gpgme.h>
 #include "error_check.hpp"
@@ -12,10 +13,13 @@
 
 #define GPGME_CALL(func, args...) error_wrapper<gpgme_error_t>(#func, (func)(args), GPG_ERR_NO_ERROR, gpgme_strerror)
 
+namespace filesystem = std::experimental::filesystem;
+
 class GPGHelper {
 private:
     gpgme_ctx_t ctx;
-    char tmpdir[22] = "/tmp/.libgpgme.XXXXXX";
+    filesystem::path tmpdir;
+    void reset_tmpdir();
 
 public:
     static void change_keytime(std::vector<uint8_t> &key, uint32_t keytime);
