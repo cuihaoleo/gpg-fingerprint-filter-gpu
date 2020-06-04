@@ -1,7 +1,7 @@
 NVCC = nvcc
 NVCCFLAGS += -O2 -std=c++14
-INC = `pkg-config --cflags gpgme`
-LIBS = `pkg-config --libs gpgme` -lstdc++fs
+INC = `gpgme-config --cflags`
+LIBS = `gpgme-config --libs` -lstdc++fs
 
 .PHONY: all clean
 
