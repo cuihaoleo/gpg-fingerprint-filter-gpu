@@ -141,7 +141,7 @@ static bool compile_pattern(const char *pattern, uint8_t *output) {
     return true;
 }
 
-void load_patterns(const std::string input) {
+void load_patterns(const std::string &input) {
     size_t pos = 0;
     int count = 0;
     std::string buffer = input + "|";

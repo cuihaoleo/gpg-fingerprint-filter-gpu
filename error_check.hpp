@@ -3,7 +3,7 @@
 
 #include <stdexcept>
 
-template<class ErrorT> inline void error_wrapper(
+template<typename ErrorT> inline void error_wrapper(
         const char *func,
         ErrorT code,
         ErrorT good_code,

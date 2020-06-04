@@ -5,7 +5,7 @@
 
 #include "error_check.hpp"
 
-void load_patterns(const std::string input);
+void load_patterns(const std::string &input);
 size_t load_key(const std::vector<uint8_t> &pubkey);
 
 __global__

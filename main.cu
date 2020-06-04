@@ -9,14 +9,18 @@
 #include <chrono>
 #include <algorithm>
 #include <memory>
+#include <thread>
+#include <utility>
 #include <map>
 
 extern "C" {
 #include <sys/stat.h>
+#include <sys/sysinfo.h>
 }
 
-#include "gpgme_helper.hpp"
 #include "key_test.hpp"
+#include "safe_stack.hpp"
+#include "gpgme_helper.hpp"
 
 volatile sig_atomic_t cleanup_flag = 0;
 
@@ -69,7 +73,7 @@ int _main(const Config &conf) {
         return EXIT_FAILURE;
     }
 
-    GPGHelper key_helper;
+    GPGWorker key_worker(8, conf.algorithm);
     unsigned long long count = 0ULL;
     uint32_t keytime;
     auto t0 = std::chrono::steady_clock::now();
@@ -81,41 +85,8 @@ int _main(const Config &conf) {
         }
 
         // generate key
-        auto user_id = "KEY #" + std::to_string(round);
-        key_helper.create_key(user_id, conf.algorithm);
-
-        auto pubkey = key_helper.load_pubkey(user_id);
-        auto n_chunk = load_key(pubkey);
-
-        if (round) {
-            auto prev_user_id = "KEY #" + std::to_string(round - 1);
-            auto t1 = std::chrono::steady_clock::now();
-            std::chrono::duration<double> elapsed = t1 - t0;
-
-            count += batch_size;
-            printf("Speed: %.4lf hashes / sec\n", count / elapsed.count());
-
-            // retrieve previous result
-            // put here so CPU/GPU runs together
-            CU_CALL(cudaDeviceSynchronize);
-            CU_CALL(cudaPeekAtLastError);
-
-            if (*retval != UINT32_MAX) {
-                auto buf = key_helper.load_privkey_full(prev_user_id);
-                GPGHelper::change_keytime(buf, keytime - *retval);
-
-                std::ofstream fout(conf.output, std::ofstream::binary);
-                fout.write((const char*)buf.data(), buf.size());
-                fout.close();
-
-                printf("Result found!\n");
-                printf("GPG key written to %s\n", conf.output.c_str());
-
-                break;
-            }
-
-            key_helper.delete_key(prev_user_id);
-        }
+        auto key_storage = key_worker.recv_key();
+        auto n_chunk = load_key(key_storage.buffer);
 
         // compute SHA-1 fingerprint
         keytime = time(NULL);
@@ -126,7 +97,25 @@ int _main(const Config &conf) {
         // search good pattern
         gpu_pattern_check<<<num_block, thread_per_block>>>(
                 retval.get(), h[0].get(), h[1].get(), h[2].get(), h[3].get(), h[4].get());
+
+        // retrieve result
+        CU_CALL(cudaDeviceSynchronize);
+        CU_CALL(cudaPeekAtLastError);
+
+        auto t1 = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsed = t1 - t0;
+
+        count += batch_size;
+        printf("Speed: %.4lf hashes / sec\n", count / elapsed.count());
+
+        if (*retval != UINT32_MAX) {
+            key_worker.set_good(key_storage.id, keytime - *retval, conf.output);
+            break;
+        } else
+            key_worker.set_bad(key_storage.id);
     }
+
+    key_worker.shutdown();
 
     CU_CALL(cudaDeviceSynchronize);
     CU_CALL(cudaPeekAtLastError);
@@ -149,6 +138,9 @@ void print_help(std::map<std::string, std::string> arg_map) {
     printf("  -w, --thread-per-block <N>  "
            "CUDA thread number per block [default: %s]\n",
            arg_map["thread-per-block"].c_str());
+    printf("  -j, --gpgme-thread <N>      "
+           "Number of threads to generate keys [default: %s]\n",
+           arg_map["gpgme-thread"].c_str());
     printf("  -h, --help\n");
 }
 
@@ -158,6 +150,7 @@ int main(int argc, char* argv[]) {
         { "a", "algorithm" },
         { "t", "time-offset" },
         { "w", "thread-per-block" },
+        { "j", "gpgme-thread" }
     };
 
     // default args
@@ -165,6 +158,7 @@ int main(int argc, char* argv[]) {
     arg_map_default["algorithm"] = "default";
     arg_map_default["time-offset"] = "15552000";
     arg_map_default["thread-per-block"] = "512";
+    arg_map_default["gpgme-thread"] = std::to_string(std::max(get_nprocs(), 1));
 
     auto arg_map = arg_map_default;
     std::string next_key = "";
