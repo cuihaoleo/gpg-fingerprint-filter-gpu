@@ -16,7 +16,6 @@ template<typename ErrorT> inline void error_wrapper(
     }
 }
 
-#define CU_CALL(func, args...) error_wrapper<cudaError_t>(#func, (func)(args), cudaSuccess, cudaGetErrorString)
 #define NULLABLE_CALL(func, args...) error_wrapper<bool>(#func, ((func)(args)) != nullptr, true)
 #define DIE_ON_ERR(cond) error_wrapper<bool>("assertion "#cond, cond, true)
 

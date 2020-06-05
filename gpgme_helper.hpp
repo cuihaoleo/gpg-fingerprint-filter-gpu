@@ -1,16 +1,17 @@
 #ifndef _GPGME_HELPER_HPP_
 #define _GPGME_HELPER_HPP_
 
-#include <cstdint>
-#include <utility>
 #include <vector>
 #include <thread>
+#include <utility>
 #include <experimental/filesystem>
 
-#include <gpgme.h>
-#include "error_check.hpp"
-#include "safe_stack.hpp"
+#include <cstdint>
 
+#include <gpgme.h>
+
+#include "safe_stack.hpp"
+#include "error_check.hpp"
 #define GPGME_CALL(func, args...) error_wrapper<gpgme_error_t>(#func, (func)(args), GPG_ERR_NO_ERROR, gpgme_strerror)
 
 namespace filesystem = std::experimental::filesystem;

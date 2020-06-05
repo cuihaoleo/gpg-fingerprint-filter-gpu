@@ -1,17 +1,9 @@
-#include <vector>
-#include <fstream>
 #include <iostream>
-#include <ctime>
-#include <cctype>
-#include <cassert>
+#include <map>
+
 #include <csignal>
 #include <cstring>
-#include <chrono>
-#include <algorithm>
-#include <memory>
-#include <thread>
-#include <utility>
-#include <map>
+#include <cstdint>
 
 extern "C" {
 #include <sys/stat.h>
@@ -19,12 +11,12 @@ extern "C" {
 }
 
 #include "key_test.hpp"
-#include "safe_stack.hpp"
 #include "gpgme_helper.hpp"
 
 volatile sig_atomic_t cleanup_flag = 0;
 
 void signal_handler(int sig) {
+    (void)sig;
     cleanup_flag = 1;
 }
 
@@ -48,37 +40,14 @@ int _main(const Config &conf) {
     const int time_offset = conf.time_offset;
 
     const int num_block = time_offset / thread_per_block;
-    const int batch_size = num_block * thread_per_block;
 
-    // Compile pattern
-    load_patterns(conf.pattern);
-
-    // CUDA allocation
-    using cu_u32_ptr = std::unique_ptr<uint32_t, decltype(&cudaFree)>;
-    auto cu_alloc = [](size_t size, bool managed) {
-        void *ptr;
-        auto err = managed ? cudaMallocManaged(&ptr, size) : cudaMalloc(&ptr, size);
-        return err == cudaSuccess ? ptr : nullptr;
-    };
-
-    cu_u32_ptr retval((uint32_t*)cu_alloc(sizeof(uint32_t), true), cudaFree);
-    *retval = UINT32_MAX;
-
-    std::vector<cu_u32_ptr> h;
-    for (int i = 0; i < 5; i++)
-        h.push_back(cu_u32_ptr((uint32_t*)cu_alloc(batch_size * sizeof(uint32_t), false), cudaFree));
-
-    if (std::find(h.begin(), h.end(), nullptr) != h.end()) {
-        fprintf(stderr, "cudaMalloc() failed\n");
-        return EXIT_FAILURE;
-    }
-
+    CudaManager manager(num_block, thread_per_block);
     GPGWorker key_worker(8, conf.algorithm);
+
     unsigned long long count = 0ULL;
-    uint32_t keytime;
     auto t0 = std::chrono::steady_clock::now();
 
-    for (unsigned round = 0; round != UINT_MAX; round++) {
+    while (true) {
         if (cleanup_flag) {
             fprintf(stderr, "Signal caught! Let's exit...\n");
             break;
@@ -86,40 +55,22 @@ int _main(const Config &conf) {
 
         // generate key
         auto key_storage = key_worker.recv_key();
-        auto n_chunk = load_key(key_storage.buffer);
+        manager.test_key(key_storage.buffer, conf.pattern);
+        u32 result_time = manager.get_result_time();
 
-        // compute SHA-1 fingerprint
-        keytime = time(NULL);
-        for (size_t i = 0; i < n_chunk; i++)
-            proc_chunk<<<num_block, thread_per_block>>>(
-                    i, keytime, h[0].get(), h[1].get(), h[2].get(), h[3].get(), h[4].get());
-
-        // search good pattern
-        gpu_pattern_check<<<num_block, thread_per_block>>>(
-                retval.get(), h[0].get(), h[1].get(), h[2].get(), h[3].get(), h[4].get());
-
-        // retrieve result
-        CU_CALL(cudaDeviceSynchronize);
-        CU_CALL(cudaPeekAtLastError);
-
-        auto t1 = std::chrono::steady_clock::now();
-        std::chrono::duration<double> elapsed = t1 - t0;
-
-        count += batch_size;
-        printf("Speed: %.4lf hashes / sec\n", count / elapsed.count());
-
-        if (*retval != UINT32_MAX) {
-            key_worker.set_good(key_storage.id, keytime - *retval, conf.output);
+        if (result_time != UINT32_MAX) {
+            key_worker.set_good(key_storage.id, result_time, conf.output);
             break;
         } else
             key_worker.set_bad(key_storage.id);
+
+        auto t1 = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsed = t1 - t0;
+        count += num_block * thread_per_block;
+        printf("Speed: %.4lf hashes / sec\n", count / elapsed.count());
     }
 
     key_worker.shutdown();
-
-    CU_CALL(cudaDeviceSynchronize);
-    CU_CALL(cudaPeekAtLastError);
-
     return 0;
 }
 
@@ -177,23 +128,21 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        for (auto &row: named_args) {
-            if (arg == "-" + row[0] or arg == "--" + row[1]) {
+        for (auto &row: named_args)
+            if (arg == "-" + row[0] || arg == "--" + row[1]) {
                 next_key = row[1];
                 break;
             }
-        }
 
         if (next_key == "") {
             bool parsed = false;
 
-            for (auto &pos_arg: positional_args) {
+            for (auto &pos_arg: positional_args)
                 if (arg_map.count(pos_arg) == 0) {
                     arg_map[pos_arg] = arg;
                     parsed = true;
                     break;
                 }
-            }
 
             if (!parsed) {
                 fprintf(stderr, "Unknown argument: %s\n\n", arg.c_str());

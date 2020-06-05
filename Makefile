@@ -1,5 +1,5 @@
 NVCC = nvcc
-NVCCFLAGS += -O2 -std=c++14
+NVCCFLAGS += -O3 -std=c++14
 INC = `gpgme-config --cflags`
 LIBS = `gpgme-config --libs` -lstdc++fs
 
@@ -7,20 +7,20 @@ LIBS = `gpgme-config --libs` -lstdc++fs
 
 all: gpg-fingerprint-filter-gpu
 
-gpgme_helper.o: gpgme_helper.cpp gpgme_helper.hpp
-	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $<
+key_test_sha1.o: key_test_sha1.cu
+	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $^
 
-key_test_sha1.o: key_test_sha1.cu key_test.hpp
-	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $<
+key_test_pattern.o: key_test_pattern.cu
+	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $^
 
-key_test_pattern.o: key_test_pattern.cu key_test.hpp
-	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $<
+key_test.o: key_test.cpp
+	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $^
 
-main.o: main.cu
-	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $<
+gpgme_helper.o: gpgme_helper.cpp
+	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $^
 
-gpg-fingerprint-filter-gpu: main.o key_test_sha1.o key_test_pattern.o gpgme_helper.o
+gpg-fingerprint-filter-gpu: main.cpp key_test.o key_test_sha1.o key_test_pattern.o gpgme_helper.o
 	$(NVCC) -o $@ $(NVCCFLAGS) $(LIBS) $(INC) $^
 
 clean:
-	-rm *.o gpg-fingerprint-filter-gpu
+	-rm -f *.o gpg-fingerprint-filter-gpu

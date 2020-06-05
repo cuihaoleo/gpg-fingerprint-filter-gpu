@@ -1,49 +1,17 @@
-#include <cstdint>
-#include <iostream>
-#include <algorithm>
 #include "key_test.hpp"
-#include "error_check.hpp"
 
 #ifndef LROT32
 #define LROT32(x, n) (((x)<<(n))|((x)>>(32-(n))))
 #endif
 
 // DSA, no key should be longer
-__constant__ uint32_t chunk_buffer[208];
+__constant__ static u32 chunk_buffer[208];
 
-__global__
-void proc_chunk(
-        size_t chunk_idx,
-        uint32_t keytime,
-        uint32_t *h0,
-        uint32_t *h1,
-        uint32_t *h2,
-        uint32_t *h3,
-        uint32_t *h4) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    uint32_t a, b, c, d, e;
-
-    uint32_t w[16];
-    memcpy(w, chunk_buffer + chunk_idx * 16, sizeof(w));
-
-    if (chunk_idx == 0) {
-        w[1] = keytime - index;
-        h0[index] = 0x67452301;
-        h1[index] = 0xEFCDAB89;
-        h2[index] = 0x98BADCFE;
-        h3[index] = 0x10325476;
-        h4[index] = 0xC3D2E1F0;
-    }
-
-    a = h0[index];
-    b = h1[index];
-    c = h2[index];
-    d = h3[index];
-    e = h4[index];
-
+__device__ static
+void sha1_main_loop(u32 w[16], u32 &a, u32 &b, u32 &c, u32 &d, u32 &e) {
 #pragma unroll
     for (int i=0; i<80; i++) {
-        uint32_t f, k;
+        u32 f, k;
 
         if (i < 20) {
             f = d ^ (b & (c ^ d));
@@ -59,19 +27,66 @@ void proc_chunk(
             k = 0xCA62C1D6;
         }
 
-        uint32_t wi;
+        u32 wi;
         if (i < 16)
             wi = w[i];
         else
             wi = w[i%16] = LROT32(w[(i-3)%16] ^ w[(i-8)%16] ^ w[(i-14)%16] ^ w[i%16], 1);
 
-        uint32_t temp = LROT32(a, 5) + f + e + k + wi;
+        u32 temp = LROT32(a, 5) + f + e + k + wi;
         e = d;
         d = c;
         c = LROT32(b, 30);
         b = a;
         a = temp;
     }
+}
+
+__global__ static
+void proc_chunk0(u32 t0, u32 *h0, u32 *h1, u32 *h2, u32 *h3, u32 *h4) {
+    constexpr u32 a0 = 0x67452301;
+    constexpr u32 b0 = 0xEFCDAB89;
+    constexpr u32 c0 = 0x98BADCFE;
+    constexpr u32 d0 = 0x10325476;
+    constexpr u32 e0 = 0xC3D2E1F0;
+
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    u32 a, b, c, d, e;
+
+    u32 w[16];
+    memcpy(w, chunk_buffer, sizeof(w));
+    w[1] = t0 - index;
+
+    a = a0;
+    b = b0;
+    c = c0;
+    d = d0;
+    e = e0;
+
+    sha1_main_loop(w, a, b, c, d, e);
+
+    h0[index] = a + a0;
+    h1[index] = b + b0;
+    h2[index] = c + c0;
+    h3[index] = d + d0;
+    h4[index] = e + e0;
+}
+
+__global__ static
+void proc_chunk(size_t chunk_idx, u32 *h0, u32 *h1, u32 *h2, u32 *h3, u32 *h4) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    u32 a, b, c, d, e;
+
+    u32 w[16];
+    memcpy(w, chunk_buffer + chunk_idx * 16, sizeof(w));
+
+    a = h0[index];
+    b = h1[index];
+    c = h2[index];
+    d = h3[index];
+    e = h4[index];
+
+    sha1_main_loop(w, a, b, c, d, e);
 
     h0[index] += a;
     h1[index] += b;
@@ -80,9 +95,15 @@ void proc_chunk(
     h4[index] += e;
 }
 
-size_t load_key(const std::vector<uint8_t> &pubkey) {
-    std::vector<uint8_t> buf = pubkey;
-    uint64_t buf_len = buf.size();
+void CudaManager::gpu_proc_chunk(int n_chunk, u32 key_time0) {
+    proc_chunk0<<<n_block_, thread_per_block_>>>(key_time0, h[0], h[1], h[2], h[3], h[4]);
+    for (size_t i = 1; i < n_chunk; i++)
+        proc_chunk<<<n_block_, thread_per_block_>>>(i, h[0], h[1], h[2], h[3], h[4]);
+}
+
+u32 CudaManager::load_key(const std::vector<u8> &pubkey) {
+    std::vector<u8> buf = pubkey;
+    u32 buf_len = buf.size();
 
     // sha-1 padding
     auto pad_zero = (56 - (buf_len + 1) % 64) % 64;
@@ -104,7 +125,7 @@ size_t load_key(const std::vector<uint8_t> &pubkey) {
     }
 
     DIE_ON_ERR(sizeof(chunk_buffer) >= buf_len2);
-    CU_CALL(cudaMemcpyToSymbol, chunk_buffer, buf.data(), buf_len2, 0, cudaMemcpyHostToDevice);  
+    CU_CALL(cudaMemcpyToSymbol, chunk_buffer, buf.data(), buf_len2);  
 
     return buf_len2 / 64;
 }

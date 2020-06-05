@@ -21,6 +21,7 @@ public:
     explicit SafeStack(size_type size): max_size(size) { };
 
     SafeStack(const SafeStack&) = delete;
+    SafeStack& operator= (const SafeStack&) = delete;
 
     void push(const T &item) {
         std::unique_lock<std::mutex> lock(mutex);

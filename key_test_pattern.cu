@@ -1,26 +1,20 @@
 #include "key_test.hpp"
 
-#include <cctype>
-#include <cstdint>
-#include <string>
+__constant__ static u8 pattern_buffer[PATTERN_LIMIT][40];
+__constant__ static int num_pattern = 0;
+__device__ static u32 result_index = UINT32_MAX;
 
-#define PATTERN_LIMIT 8
-
-__constant__ uint8_t pattern_buffer[PATTERN_LIMIT][40];
-__constant__ int num_pattern;
-
-__global__
-void gpu_pattern_check(
-        uint32_t *retval,
-        uint32_t *h0,
-        uint32_t *h1,
-        uint32_t *h2,
-        uint32_t *h3,
-        uint32_t *h4) {
-    uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
-    uint32_t tmp;
-    uint8_t w[40];
-    const uint32_t *(h[5]) = {h0, h1, h2, h3, h4};
+__global__ static
+void pattern_check(
+        u32 *h0,
+        u32 *h1,
+        u32 *h2,
+        u32 *h3,
+        u32 *h4) {
+    u32 index = blockIdx.x * blockDim.x + threadIdx.x;
+    u32 tmp;
+    u8 w[40];
+    const u32 *(h[5]) = {h0, h1, h2, h3, h4};
 
     // I assumed CUDA is little-endian
 #pragma unroll
@@ -33,7 +27,7 @@ void gpu_pattern_check(
         }
     }
 
-    uint8_t symbol_map[36];
+    u8 symbol_map[36];
 
 #pragma unroll
     for (int i=0; i<16; i++)
@@ -44,13 +38,14 @@ void gpu_pattern_check(
         symbol_map[i] = 0xFF;
 
     bool flag_ok = false;
-    for (int i = 0; i < num_pattern && !flag_ok; i++) {
+    for (int i = 0; i < num_pattern && !flag_ok; i++)
         for (int j = 39; j >= 0; j--) {
-            uint8_t symbol = pattern_buffer[i][j];
+            u8 symbol = pattern_buffer[i][j];
 
             if (symbol == 0xFF) {
                 flag_ok = true;
-                break;
+                result_index = index;
+                return;
             }
 
             if (symbol_map[symbol] == 0xFF)
@@ -58,14 +53,10 @@ void gpu_pattern_check(
             else if (symbol_map[symbol] != w[j])
                 break;
         }
-    }
-
-    if (flag_ok)
-        *retval = index;
 }
 
-static bool compile_pattern(const char *pattern, uint8_t *output) {
-    uint8_t tmp_out[40];
+static bool compile_pattern(const char *pattern, u8 *output) {
+    u8 tmp_out[40];
     int idx = 0;
     int bra = -1, ket = -1;
     const char *p;
@@ -141,12 +132,12 @@ static bool compile_pattern(const char *pattern, uint8_t *output) {
     return true;
 }
 
-void load_patterns(const std::string &input) {
+void CudaManager::load_patterns(const std::string &input) {
     size_t pos = 0;
     int count = 0;
     std::string buffer = input + "|";
     std::string pattern;
-    uint8_t compiled[8][40];
+    u8 compiled[8][40];
 
     while ((pos = buffer.find("|")) != std::string::npos) {
         pattern = buffer.substr(0, pos);
@@ -161,3 +152,19 @@ void load_patterns(const std::string &input) {
     CU_CALL(cudaMemcpyToSymbol, pattern_buffer, compiled, sizeof(compiled));
     CU_CALL(cudaMemcpyToSymbol, num_pattern, &count, sizeof(num_pattern));
 };
+
+void CudaManager::gpu_pattern_check() {
+    pattern_check<<<n_block_, thread_per_block_>>>(h[0], h[1], h[2], h[3], h[4]);
+}
+
+u32 CudaManager::get_result_index() {
+    u32 offset;
+    cudaMemcpyFromSymbol(&offset, result_index, sizeof(u32));
+
+    if (offset != UINT32_MAX) {
+        static u32 buf = UINT32_MAX;
+        cudaMemcpyToSymbol(result_index, &buf, sizeof(u32));
+    }
+
+    return offset;
+}

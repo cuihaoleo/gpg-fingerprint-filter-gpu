@@ -9,11 +9,12 @@ static filesystem::path mkdtemp_wrapper() {
     path_vec.push_back('\0');
 
     NULLABLE_CALL(mkdtemp, path_vec.data());
-    return path_vec.data();
+    path_vec.pop_back();
+
+    return std::string(path_vec.begin(), path_vec.end());
 };
 
-GPGHelper::GPGHelper():
-        tmpdir(mkdtemp_wrapper()) {
+GPGHelper::GPGHelper(): tmpdir(mkdtemp_wrapper()) {
     GPGME_CALL(gpgme_new, &ctx);
     GPGME_CALL(gpgme_ctx_set_engine_info, ctx, GPGME_PROTOCOL_OpenPGP, NULL, tmpdir.c_str());
 }
