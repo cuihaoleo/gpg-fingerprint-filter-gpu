@@ -7,7 +7,7 @@
 // DSA, no key should be longer
 __constant__ static u32 chunk_buffer[208];
 
-__device__ static
+__forceinline__ __device__ static
 void sha1_main_loop(u32 w[16], u32 &a, u32 &b, u32 &c, u32 &d, u32 &e) {
 #pragma unroll
     for (int i=0; i<80; i++) {
@@ -43,14 +43,14 @@ void sha1_main_loop(u32 w[16], u32 &a, u32 &b, u32 &c, u32 &d, u32 &e) {
 }
 
 __global__ static
-void proc_chunk0(u32 t0, u32 *h0, u32 *h1, u32 *h2, u32 *h3, u32 *h4) {
+void proc_chunk0(u32 t0, u32* __restrict__ h0, u32* __restrict__ h1, u32* __restrict__ h2, u32* __restrict__ h3, u32* __restrict__ h4) {
     constexpr u32 a0 = 0x67452301;
     constexpr u32 b0 = 0xEFCDAB89;
     constexpr u32 c0 = 0x98BADCFE;
     constexpr u32 d0 = 0x10325476;
     constexpr u32 e0 = 0xC3D2E1F0;
 
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t index = blockIdx.x * blockDim.x + threadIdx.x;
     u32 a, b, c, d, e;
 
     u32 w[16];
@@ -74,7 +74,7 @@ void proc_chunk0(u32 t0, u32 *h0, u32 *h1, u32 *h2, u32 *h3, u32 *h4) {
 
 __global__ static
 void proc_chunk(size_t chunk_idx, u32 *h0, u32 *h1, u32 *h2, u32 *h3, u32 *h4) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t index = blockIdx.x * blockDim.x + threadIdx.x;
     u32 a, b, c, d, e;
 
     u32 w[16];
@@ -95,19 +95,19 @@ void proc_chunk(size_t chunk_idx, u32 *h0, u32 *h1, u32 *h2, u32 *h3, u32 *h4) {
     h4[index] += e;
 }
 
-void CudaManager::gpu_proc_chunk(int n_chunk, u32 key_time0) {
+void CudaManager::gpu_proc_chunk(u32 n_chunk, u32 key_time0) const {
     proc_chunk0<<<n_block_, thread_per_block_>>>(key_time0, h[0], h[1], h[2], h[3], h[4]);
-    for (size_t i = 1; i < n_chunk; i++)
+    for (u32 i = 1; i < n_chunk; i++)
         proc_chunk<<<n_block_, thread_per_block_>>>(i, h[0], h[1], h[2], h[3], h[4]);
 }
 
-u32 CudaManager::load_key(const std::vector<u8> &pubkey) {
+u32 CudaManager::load_key(const std::vector<u8> &pubkey) const {
     std::vector<u8> buf = pubkey;
     u32 buf_len = buf.size();
 
     // sha-1 padding
-    auto pad_zero = (56 - (buf_len + 1) % 64) % 64;
-    auto buf_len2 = buf_len + 1 + pad_zero + 8;
+    int pad_zero = (56 - (buf_len + 1) % 64) % 64;
+    u32 buf_len2 = buf_len + 1 + pad_zero + 8;
 
     buf.push_back(0x80);
     buf.resize(buf_len2, 0);
@@ -119,13 +119,13 @@ u32 CudaManager::load_key(const std::vector<u8> &pubkey) {
     }
 
     // group buffer to 32-bit words
-    for (int i = 0; i < buf_len2; i += 4) {
+    for (u32 i = 0; i < buf_len2; i += 4) {
         std::swap(buf[i], buf[i + 3]);
         std::swap(buf[i + 1], buf[i + 2]);
     }
 
     DIE_ON_ERR(sizeof(chunk_buffer) >= buf_len2);
-    CU_CALL(cudaMemcpyToSymbol, chunk_buffer, buf.data(), buf_len2);  
+    CUDA_CALL(cudaMemcpyToSymbol, chunk_buffer, buf.data(), buf_len2);  
 
     return buf_len2 / 64;
 }

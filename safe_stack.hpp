@@ -46,11 +46,11 @@ public:
         return ret;
     }
 
-    bool empty() {
+    bool empty() const {
         return stack.size() == 0;
     }
 
-    bool full() {
+    bool full() const {
         return stack.size() >= max_size;
     }
 };

@@ -1,7 +1,7 @@
 NVCC = nvcc
-NVCCFLAGS += -O3 -std=c++14
+NVCCFLAGS += -O3 -std=c++14 --compiler-options -Wall,-Wextra
 INC = `gpgme-config --cflags`
-LIBS = `gpgme-config --libs` -lstdc++fs
+LIBS = `gpgme-config --libs` -lstdc++fs -lnvrtc -lcuda
 
 .PHONY: all clean
 
@@ -10,7 +10,7 @@ all: gpg-fingerprint-filter-gpu
 key_test_sha1.o: key_test_sha1.cu
 	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $^
 
-key_test_pattern.o: key_test_pattern.cu
+key_test_pattern.o: key_test_pattern.cpp
 	$(NVCC) -c -o $@ $(NVCCFLAGS) $(INC) $^
 
 key_test.o: key_test.cpp

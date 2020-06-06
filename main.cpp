@@ -41,8 +41,9 @@ int _main(const Config &conf) {
 
     const int num_block = time_offset / thread_per_block;
 
-    CudaManager manager(num_block, thread_per_block);
     GPGWorker key_worker(8, conf.algorithm);
+    CudaManager manager(num_block, thread_per_block);
+    manager.load_patterns(conf.pattern);
 
     unsigned long long count = 0ULL;
     auto t0 = std::chrono::steady_clock::now();
@@ -55,7 +56,7 @@ int _main(const Config &conf) {
 
         // generate key
         auto key_storage = key_worker.recv_key();
-        manager.test_key(key_storage.buffer, conf.pattern);
+        manager.test_key(key_storage.buffer);
         u32 result_time = manager.get_result_time();
 
         if (result_time != UINT32_MAX) {

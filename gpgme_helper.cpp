@@ -24,7 +24,7 @@ GPGHelper::~GPGHelper() {
     filesystem::remove_all(tmpdir);
 }
 
-void GPGHelper::create_key(std::string user_id, std::string algo) {
+void GPGHelper::create_key(std::string user_id, std::string algo) const {
     GPGME_CALL(
         gpgme_op_createkey,
         ctx,
@@ -58,7 +58,9 @@ void GPGHelper::delete_key(std::string user_id) {
     }
 
     // workaround for growing pubring and revoke certs
-    filesystem::remove_all(tmpdir / "openpgp-revocs.d");
+    auto rev_key_path = tmpdir / "openpgp-revocs.d";
+    if (filesystem::exists(rev_key_path))
+        filesystem::remove_all(rev_key_path);
 
     std::uintmax_t pubring_size;
 
@@ -72,7 +74,7 @@ void GPGHelper::delete_key(std::string user_id) {
         reset_tmpdir();
 }
 
-std::vector<uint8_t> GPGHelper::load_pubkey(std::string user_id) {
+std::vector<uint8_t> GPGHelper::load_pubkey(std::string user_id) const {
     gpgme_data_t data;
     GPGME_CALL(gpgme_data_new, &data);
 
@@ -96,6 +98,7 @@ std::vector<uint8_t> GPGHelper::load_pubkey(std::string user_id) {
         case 0x98: {
             buf[0] = 0x99;
             buf.insert(buf.begin() + 1, 0x00);
+            __attribute__ ((fallthrough));
         }
         case 0x99: {
             size_t pubkey_length = buf[1] * 256 + buf[2] + 3;
@@ -109,7 +112,7 @@ std::vector<uint8_t> GPGHelper::load_pubkey(std::string user_id) {
     return buf;
 }
 
-std::vector<uint8_t> GPGHelper::load_privkey_full(std::string user_id) {
+std::vector<uint8_t> GPGHelper::load_privkey_full(std::string user_id) const {
     gpgme_data_t data;
     GPGME_CALL(gpgme_data_new, &data);
 
@@ -192,7 +195,7 @@ GPGWorker::~GPGWorker() {
 void GPGWorker::worker(uint16_t worker_id) {
     GPGHelper key_helper;
     uint16_t key_count = 0;
-    uint32_t key_id_base = (uint32_t)worker_id << 16;
+    uint32_t key_id_base = static_cast<uint32_t>(worker_id) << 16;
     char key_id_str[14];
     auto &my_channel = channels[worker_id];
 

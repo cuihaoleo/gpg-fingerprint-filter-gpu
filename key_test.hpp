@@ -4,12 +4,12 @@
 #include <vector>
 #include <cstdint>
 
+#include <cuda.h>
 #include <cuda_runtime_api.h>
 
 #include "error_check.hpp"
-#define CU_CALL(func, args...) error_wrapper<cudaError_t>(#func, (func)(args), cudaSuccess, cudaGetErrorString)
-
-#define PATTERN_LIMIT 8
+#define CUDA_CALL(func, args...) error_wrapper<cudaError_t>(#func, (func)(args), cudaSuccess, cudaGetErrorString)
+#define CU_CALL(func, args...) error_wrapper<CUresult>(#func, (func)(args), CUDA_SUCCESS, cuGetErrorName_wrapper)
 
 using u32 = std::uint32_t;
 using u8 = std::uint8_t;
@@ -22,12 +22,15 @@ private:
     int n_block_;
     int thread_per_block_;
 
-    u32 load_key(const std::vector<u8> &pubkey);
-    void gpu_proc_chunk(int n_chunk, u32 key_time0);
-
-    void load_patterns(const std::string &input);
+    u32 load_key(const std::vector<u8> &pubkey) const;
+    void gpu_proc_chunk(u32 n_chunk, u32 key_time0) const;
     void gpu_pattern_check();
-    u32 get_result_index();
+
+    CUcontext cu_context = nullptr;
+    CUdevice cu_device;
+    CUmodule cu_module = nullptr;
+    CUfunction cu_kernel = nullptr;
+    CUdeviceptr cu_result = 0;
 
 public:
     CudaManager(int n_block, int thread_per_block);
@@ -37,8 +40,11 @@ public:
 
     ~CudaManager();
 
-    void test_key(const std::vector<u8> &key, const std::string &pattern_string);
-    u32 get_result_time();
+    void load_patterns(const std::string &input);
+    void test_key(const std::vector<u8> &key);
+    u32 get_result_time() const;
 };
+
+const char *cuGetErrorName_wrapper(CUresult);
 
 #endif

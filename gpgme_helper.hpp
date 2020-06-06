@@ -23,15 +23,15 @@ private:
     void reset_tmpdir();
 
 public:
-    static void change_keytime(std::vector<uint8_t> &key, uint32_t keytime);
+    static void change_keytime(std::vector<uint8_t> &key, uint32_t key_time);
 
     GPGHelper();
     ~GPGHelper();
 
-    void create_key(std::string user_id, std::string algo);
+    void create_key(std::string user_id, std::string algo) const;
     void delete_key(std::string user_id);
-    std::vector<uint8_t> load_pubkey(std::string user_id);
-    std::vector<uint8_t> load_privkey_full(std::string user_id);
+    std::vector<uint8_t> load_pubkey(std::string user_id) const;
+    std::vector<uint8_t> load_privkey_full(std::string user_id) const;
 };
 
 using KeyBuffer = std::vector<uint8_t>;
