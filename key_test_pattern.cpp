@@ -111,10 +111,7 @@ static std::string compile_patterns(const std::string &input) {
     std::string buffer = input + "|";
 
     ss << "\
-#define __ASSEMBLER__\n\
-#define __extension__\n\
-#include <stdint.h>\n\
-typedef uint32_t u32; \n\
+typedef unsigned int u32; \n\
 extern \"C\" __global__ \n\
 void pattern_check(u32 *result";
     for (int i = 0; i < 5; i++)
@@ -122,8 +119,8 @@ void pattern_check(u32 *result";
 
     ss << ") {\n\
   size_t index = blockIdx.x * blockDim.x + threadIdx.x; \n\
-  uint32_t tmp; \n\
-  uint8_t w[40]; \n";
+  u32 tmp; \n\
+  unsigned char w[40]; \n";
 
     for (int i = 0; i < 5; i++) {
         ss << "  tmp = h" << i << "[index];\n";
