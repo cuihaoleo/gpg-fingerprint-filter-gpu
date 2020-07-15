@@ -26,6 +26,7 @@ struct Config {
     std::string algorithm;
     unsigned long time_offset;
     unsigned long thread_per_block;
+    unsigned long gpgme_thread;
 };
 
 int _main(const Config &conf) {
@@ -41,7 +42,7 @@ int _main(const Config &conf) {
 
     const int num_block = time_offset / thread_per_block;
 
-    GPGWorker key_worker(8, conf.algorithm);
+    GPGWorker key_worker(conf.gpgme_thread, conf.algorithm);
     CudaManager manager(num_block, thread_per_block);
     manager.load_patterns(conf.pattern);
 
@@ -160,6 +161,7 @@ int main(int argc, char* argv[]) {
         config.algorithm = arg_map.at("algorithm");
         config.time_offset = std::stoul(arg_map.at("time-offset"));
         config.thread_per_block = std::stoul(arg_map.at("thread-per-block"));
+        config.gpgme_thread = std::stoul(arg_map.at("gpgme-thread"));
     } catch (const std::out_of_range &e) {
         fprintf(stderr, "Missing argument!\n\n");
         print_help(arg_map_default);
