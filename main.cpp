@@ -1,3 +1,4 @@
+#include <fstream>
 #include <iostream>
 #include <map>
 
@@ -11,7 +12,7 @@ extern "C" {
 }
 
 #include "key_test.hpp"
-#include "gpgme_helper.hpp"
+#include "gpg_helper.hpp"
 
 volatile sig_atomic_t cleanup_flag = 0;
 
@@ -26,7 +27,7 @@ struct Config {
     std::string algorithm;
     unsigned long time_offset;
     unsigned long thread_per_block;
-    unsigned long gpgme_thread;
+    unsigned long gpg_thread;
 };
 
 int _main(const Config &conf) {
@@ -34,15 +35,12 @@ int _main(const Config &conf) {
     signal(SIGTERM, signal_handler); 
     umask(0077);
 
-    // Initialize GPGME
-    NULLABLE_CALL(gpgme_check_version, nullptr);
-
     const int thread_per_block = conf.thread_per_block;
     const int time_offset = conf.time_offset;
 
     const int num_block = time_offset / thread_per_block;
 
-    GPGWorker key_worker(conf.gpgme_thread, conf.algorithm);
+    GPGWorker key_worker(conf.gpg_thread, conf.algorithm);
     CudaManager manager(num_block, thread_per_block);
     manager.load_patterns(conf.pattern);
 
@@ -56,15 +54,24 @@ int _main(const Config &conf) {
         }
 
         // generate key
-        auto key_storage = key_worker.recv_key();
-        manager.test_key(key_storage.buffer);
+        auto key = key_worker.recv_key();
+        manager.test_key(key.load_fpr_hash_packet());
         u32 result_time = manager.get_result_time();
 
         if (result_time != UINT32_MAX) {
-            key_worker.set_good(key_storage.id, result_time, conf.output);
+            key.set_creation_time(result_time);
+            auto packet = key.load_seckey_packet();
+            std::ofstream fout(conf.output, std::ios::binary);
+            fout.write((char*)packet.data(), packet.size());
+
+            // user-id packet
+            fout.write("\xb4\x06NONAME", 8);
+
+            puts("Result found!");
+            printf("GPG key written to %s\n", conf.output.c_str());
+
             break;
-        } else
-            key_worker.set_bad(key_storage.id);
+        }
 
         auto t1 = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = t1 - t0;
@@ -91,9 +98,9 @@ void print_help(std::map<std::string, std::string> arg_map) {
     printf("  -w, --thread-per-block <N>  "
            "CUDA thread number per block [default: %s]\n",
            arg_map["thread-per-block"].c_str());
-    printf("  -j, --gpgme-thread <N>      "
+    printf("  -j, --gpg-thread <N>      "
            "Number of threads to generate keys [default: %s]\n",
-           arg_map["gpgme-thread"].c_str());
+           arg_map["gpg-thread"].c_str());
     printf("  -h, --help\n");
 }
 
@@ -103,15 +110,15 @@ int main(int argc, char* argv[]) {
         { "a", "algorithm" },
         { "t", "time-offset" },
         { "w", "thread-per-block" },
-        { "j", "gpgme-thread" }
+        { "j", "gpg-thread" }
     };
 
     // default args
     std::map<std::string, std::string> arg_map_default;
-    arg_map_default["algorithm"] = "default";
+    arg_map_default["algorithm"] = "rsa";
     arg_map_default["time-offset"] = "15552000";
     arg_map_default["thread-per-block"] = "512";
-    arg_map_default["gpgme-thread"] = std::to_string(std::max(get_nprocs(), 1));
+    arg_map_default["gpg-thread"] = std::to_string(std::max(get_nprocs(), 1));
 
     auto arg_map = arg_map_default;
     std::string next_key = "";
@@ -161,7 +168,7 @@ int main(int argc, char* argv[]) {
         config.algorithm = arg_map.at("algorithm");
         config.time_offset = std::stoul(arg_map.at("time-offset"));
         config.thread_per_block = std::stoul(arg_map.at("thread-per-block"));
-        config.gpgme_thread = std::stoul(arg_map.at("gpgme-thread"));
+        config.gpg_thread = std::stoul(arg_map.at("gpg-thread"));
     } catch (const std::out_of_range &e) {
         fprintf(stderr, "Missing argument!\n\n");
         print_help(arg_map_default);

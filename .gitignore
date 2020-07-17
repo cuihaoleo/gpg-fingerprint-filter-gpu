@@ -1,2 +1,7 @@
 gpg-fingerprint-filter-gpu
 *.o
+*.out
+*.gpg
+*.pgp
+*.asc
+*.ptx

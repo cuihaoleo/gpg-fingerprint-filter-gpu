@@ -23,11 +23,14 @@ public:
     SafeStack(const SafeStack&) = delete;
     SafeStack& operator= (const SafeStack&) = delete;
 
-    void push(const T &item) {
+    template<typename ...Args>
+    void emplace(Args&&... args) {
+        T instance(std::forward<Args>(args)...);
+
         std::unique_lock<std::mutex> lock(mutex);
         cond_var_push.wait(lock, [=]{ return !full(); });
 
-        stack.push_back(item);
+        stack.emplace_back(std::move(instance));
 
         lock.unlock();
         cond_var_pop.notify_one();
