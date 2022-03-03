@@ -34,8 +34,22 @@ Examples:
 
 ### Import Key
 
-Like this:
+Import the generated private key:
 
 ```
 $ gpg --allow-non-selfsigned-uid --import private.pgp
+```
+
+The private key file doesn't have a self-signed UID on it. GPG will display `NONAME` as the default UID.
+You need to add a valid UID and remove the default one to make the key usable:
+
+```
+$ gpg --edit-key <KEY_FINGERPRINT>
+gpg> adduid
+Real name: Your Name Here
+Email address: your_email@example.com
+......
+gpg> uid 1
+gpg> deluid
+gpg> save
 ```
