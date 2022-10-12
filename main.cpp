@@ -28,6 +28,7 @@ struct Config {
     unsigned long time_offset;
     unsigned long thread_per_block;
     unsigned long gpg_thread;
+    unsigned long base_time;
 };
 
 int _main(const Config &conf) {
@@ -41,7 +42,7 @@ int _main(const Config &conf) {
     const int num_block = time_offset / thread_per_block;
 
     GPGWorker key_worker(conf.gpg_thread, conf.algorithm);
-    CudaManager manager(num_block, thread_per_block);
+    CudaManager manager(num_block, thread_per_block, conf.base_time);
     manager.load_patterns(conf.pattern);
 
     unsigned long long count = 0ULL;
@@ -98,9 +99,12 @@ void print_help(std::map<std::string, std::string> arg_map) {
     printf("  -w, --thread-per-block <N>  "
            "CUDA thread number per block [default: %s]\n",
            arg_map["thread-per-block"].c_str());
-    printf("  -j, --gpg-thread <N>      "
+    printf("  -j, --gpg-thread <N>        "
            "Number of threads to generate keys [default: %s]\n",
            arg_map["gpg-thread"].c_str());
+    printf("  -b, --base-time <N>         "
+           "Base key timestamp (0 means current time) [default: %s]\n",
+           arg_map["base-time"].c_str());
     printf("  -h, --help\n");
 }
 
@@ -110,7 +114,8 @@ int main(int argc, char* argv[]) {
         { "a", "algorithm" },
         { "t", "time-offset" },
         { "w", "thread-per-block" },
-        { "j", "gpg-thread" }
+        { "j", "gpg-thread" },
+        { "b", "base-time" }
     };
 
     // default args
@@ -119,6 +124,7 @@ int main(int argc, char* argv[]) {
     arg_map_default["time-offset"] = "15552000";
     arg_map_default["thread-per-block"] = "512";
     arg_map_default["gpg-thread"] = std::to_string(std::max(get_nprocs(), 1));
+    arg_map_default["base-time"] = "0";
 
     auto arg_map = arg_map_default;
     std::string next_key = "";
@@ -169,6 +175,7 @@ int main(int argc, char* argv[]) {
         config.time_offset = std::stoul(arg_map.at("time-offset"));
         config.thread_per_block = std::stoul(arg_map.at("thread-per-block"));
         config.gpg_thread = std::stoul(arg_map.at("gpg-thread"));
+        config.base_time = std::stoul(arg_map.at("base-time"));
     } catch (const std::out_of_range &e) {
         fprintf(stderr, "Missing argument!\n\n");
         print_help(arg_map_default);

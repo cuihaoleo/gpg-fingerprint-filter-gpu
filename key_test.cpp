@@ -6,8 +6,8 @@ const char *cuGetErrorName_wrapper(CUresult err) {
     return msg;
 }
 
-CudaManager::CudaManager(int n_block, int thread_per_block):
-        n_block_(n_block), thread_per_block_(thread_per_block) {
+CudaManager::CudaManager(int n_block, int thread_per_block, unsigned long base_time):
+        n_block_(n_block), thread_per_block_(thread_per_block), base_time_(base_time) {
     int batch_size = n_block * thread_per_block;
 
     CU_CALL(cuInit, 0);
@@ -37,7 +37,7 @@ CudaManager::~CudaManager() {
 
 void CudaManager::test_key(const std::vector<u8> &key) {
     auto n_chunk = load_key(key);
-    key_time0 = time(NULL);
+    key_time0 = base_time_ ? base_time_ : time(NULL);
 
     gpu_proc_chunk(n_chunk, key_time0);
     gpu_pattern_check();

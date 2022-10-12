@@ -13,7 +13,8 @@ $ ./gpg-fingerprint-filter-gpu --help
   -a, --algorithm <ALGO>      PGP key algorithm [default: rsa]
   -t, --time-offset <N>       Max key timestamp offset [default: 15552000]
   -w, --thread-per-block <N>  CUDA thread number per block [default: 512]
-  -j, --gpg-thread <N>      Number of threads to generate keys [default: 8]
+  -j, --gpg-thread <N>        Number of threads to generate keys [default: 12]
+  -b, --base-time <N>         Base key timestamp (0 means current time) [default: 0]
   -h, --help
 ```
 
