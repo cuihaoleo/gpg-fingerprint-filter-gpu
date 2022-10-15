@@ -10,9 +10,10 @@ $ ./gpg-fingerprint-filter-gpu --help
 
   <pattern>                   Key pattern to match, for example 'X{8}|(AB){4}'
   <output>                    Save secret key to this path
-  -a, --algorithm <ALGO>      PGP key algorithm [default: default]
+  -a, --algorithm <ALGO>      PGP key algorithm [default: rsa]
   -t, --time-offset <N>       Max key timestamp offset [default: 15552000]
   -w, --thread-per-block <N>  CUDA thread number per block [default: 512]
+  -j, --gpg-thread <N>      Number of threads to generate keys [default: 8]
   -h, --help
 ```
 
