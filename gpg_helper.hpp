@@ -16,6 +16,7 @@ class GPGKey {
 private:
     enum openpgp_pk_algos {
         PK_RSA = 1,
+        PK_ECDH = 18,
         PK_ECDSA = 19,
         PK_EDDSA = 22,
     };

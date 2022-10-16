@@ -55,3 +55,22 @@ gpg> uid 1
 gpg> deluid
 gpg> save
 ```
+
+### Merge Key
+
+Since cv25519 cannot be used as primary key, you need to merge the generated key with an existing key:
+
+Reference: https://security.stackexchange.com/questions/32935/migrating-gpg-master-keys-as-subkeys-to-new-master-key
+
+TLDR:
+
+1. Primary key should be created earlier than subkey. 
+2. To persevere the subkey fingerprint, you need perserve the subkey creation time.
+
+```
+gpg -k --with-colons
+gpg --with-keygrip -k
+gpg --expert --faked-system-time="[sub key timestamp]\!" --ignore-time-conflict --edit-key [master key id]
+addkey
+13 (existing key)
+```

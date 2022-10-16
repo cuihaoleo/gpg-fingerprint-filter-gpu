@@ -58,6 +58,10 @@ GPGKey::GPGKey(const std::string &algorithm) {
         s_expr = "(genkey(ecc(curve Ed25519)(flags eddsa comp)))";
         curve_oid = { 9, 0x2B, 0x06, 0x01, 0x04, 0x01, 0xDA, 0x47, 0x0F, 0x01 };
         pk_algo = PK_EDDSA;
+    } else if (algorithm == "cv25519") {
+        s_expr = "(genkey(ecc(curve Curve25519)(flags djb-tweak comp)))";
+        curve_oid = { 0x0a, 0x2b, 0x06, 0x01, 0x04, 0x01, 0x97, 0x55, 0x01, 0x05, 0x01 };
+        pk_algo = PK_ECDH;
     } else {
         throw std::runtime_error("unsupported algorithm: " + algorithm);
     }
@@ -80,7 +84,7 @@ GPGKey::GPGKey(const std::string &algorithm) {
     if (pk_algo == PK_RSA) {
         public_param_names = "ne";
         private_param_names = "dpqu";
-    } else if (pk_algo == PK_ECDSA || pk_algo == PK_EDDSA) {
+    } else if (pk_algo == PK_ECDSA || pk_algo == PK_EDDSA || pk_algo == PK_ECDH) {
         public_params.push_back(curve_oid);
         public_param_names = "q";
         private_param_names = "d";
@@ -88,6 +92,10 @@ GPGKey::GPGKey(const std::string &algorithm) {
 
     for (auto k: public_param_names)
         public_params.emplace_back(load_key_param(public_key, k));
+
+    // secret sauce
+    if (pk_algo == PK_ECDH)
+        public_params.push_back({0x03, 0x01, 0x08, 0x07});
 
     for (auto k: private_param_names)
         private_params.emplace_back(load_key_param(private_key, k));
