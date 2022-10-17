@@ -88,24 +88,24 @@ int _main(const Config &conf) {
 void print_help(std::map<std::string, std::string> arg_map) {
     printf("  gpg-fingerprint-filter-gpu [OPTIONS] <pattern> <output>\n\n");
     printf("  <pattern>                   "
-           "Key pattern to match, for example 'X{8}|(AB){4}'\n");
+           "Fingerprint pattern to match, for example 'X{8}|(AB){4}'\n");
     printf("  <output>                    "
-           "Save secret key to this path\n");
+           "Save the secret key to this path\n");
     printf("  -a, --algorithm <ALGO>      "
            "PGP key algorithm [default: %s]\n",
            arg_map["algorithm"].c_str());
+    printf("  -b, --base-time <N>         "
+           "Base key timestamp in UNIX epoch [default: %s]\n",
+           "now");
     printf("  -t, --time-offset <N>       "
-           "Max key timestamp offset [default: %s]\n",
+           "Max key timestamp offset in seconds [default: %s]\n",
            arg_map["time-offset"].c_str());
     printf("  -w, --thread-per-block <N>  "
-           "CUDA thread number per block [default: %s]\n",
+           "Number of CUDA threads per block [default: %s]\n",
            arg_map["thread-per-block"].c_str());
     printf("  -j, --gpg-thread <N>        "
            "Number of threads to generate keys [default: %s]\n",
-           arg_map["gpg-thread"].c_str());
-    printf("  -b, --base-time <N>         "
-           "Base key timestamp (0 means current time) [default: %s]\n",
-           arg_map["base-time"].c_str());
+           "# of CPUs");
     printf("  -h, --help\n");
 }
 
@@ -113,19 +113,19 @@ int main(int argc, char* argv[]) {
     const std::string positional_args[] = { "pattern", "output" };
     const std::string named_args[][2] = {
         { "a", "algorithm" },
+        { "b", "base-time" },
         { "t", "time-offset" },
         { "w", "thread-per-block" },
         { "j", "gpg-thread" },
-        { "b", "base-time" }
     };
 
     // default args
     std::map<std::string, std::string> arg_map_default;
     arg_map_default["algorithm"] = "rsa";
+    arg_map_default["base-time"] = std::to_string(time(NULL));
     arg_map_default["time-offset"] = "15552000";
     arg_map_default["thread-per-block"] = "512";
     arg_map_default["gpg-thread"] = std::to_string(std::max(get_nprocs(), 1));
-    arg_map_default["base-time"] = "0";
 
     auto arg_map = arg_map_default;
     std::string next_key = "";
@@ -173,10 +173,10 @@ int main(int argc, char* argv[]) {
         config.pattern = arg_map.at("pattern");
         config.output = arg_map.at("output");
         config.algorithm = arg_map.at("algorithm");
+        config.base_time = std::stoul(arg_map.at("base-time"));
         config.time_offset = std::stoul(arg_map.at("time-offset"));
         config.thread_per_block = std::stoul(arg_map.at("thread-per-block"));
         config.gpg_thread = std::stoul(arg_map.at("gpg-thread"));
-        config.base_time = std::stoul(arg_map.at("base-time"));
     } catch (const std::out_of_range &e) {
         fprintf(stderr, "Missing argument!\n\n");
         print_help(arg_map_default);

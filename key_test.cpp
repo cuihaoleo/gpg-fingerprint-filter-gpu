@@ -37,7 +37,7 @@ CudaManager::~CudaManager() {
 
 void CudaManager::test_key(const std::vector<u8> &key) {
     auto n_chunk = load_key(key);
-    key_time0 = base_time_ ? base_time_ : time(NULL);
+    key_time0 = base_time_;
 
     gpu_proc_chunk(n_chunk, key_time0);
     gpu_pattern_check();
