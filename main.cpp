@@ -48,9 +48,10 @@ int _main(const Config &conf) {
     unsigned long long count = 0ULL;
     auto t0 = std::chrono::steady_clock::now();
 
+    printf("\n");
     while (true) {
         if (cleanup_flag) {
-            fprintf(stderr, "Signal caught! Let's exit...\n");
+            fprintf(stderr, "\nSignal caught! Let's exit...\n");
             break;
         }
 
@@ -68,7 +69,7 @@ int _main(const Config &conf) {
             // user-id packet
             fout.write("\xb4\x06NONAME", 8);
 
-            puts("Result found!");
+            puts("\nResult found!");
             printf("GPG key written to %s\n", conf.output.c_str());
 
             break;
@@ -77,7 +78,7 @@ int _main(const Config &conf) {
         auto t1 = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = t1 - t0;
         count += num_block * thread_per_block;
-        printf("Speed: %.4lf hashes / sec\n", count / elapsed.count());
+        printf("\rSpeed: %.4lf hashes / sec", count / elapsed.count());
     }
 
     key_worker.shutdown();
