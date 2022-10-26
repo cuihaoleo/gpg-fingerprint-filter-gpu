@@ -29,6 +29,7 @@ struct Config {
     unsigned long thread_per_block;
     unsigned long gpg_thread;
     unsigned long base_time;
+    bool batch_mode;
 };
 
 int _main(const Config &conf) {
@@ -48,7 +49,6 @@ int _main(const Config &conf) {
     unsigned long long count = 0ULL;
     auto t0 = std::chrono::steady_clock::now();
 
-    printf("\n");
     while (true) {
         if (cleanup_flag) {
             fprintf(stderr, "\nSignal caught! Let's exit...\n");
@@ -63,16 +63,20 @@ int _main(const Config &conf) {
         if (result_time != UINT32_MAX) {
             key.set_creation_time(result_time);
             auto packet = key.load_seckey_packet();
-            std::ofstream fout(conf.output, std::ios::binary);
+            // add random to avoid collision
+            auto filename = conf.output + "/" + std::to_string(result_time) +
+                            "." + std::to_string(rand()) + ".gpg";
+            std::ofstream fout(filename, std::ios::binary);
             fout.write((char*)packet.data(), packet.size());
 
             // user-id packet
             fout.write("\xb4\x06NONAME", 8);
 
             puts("\nResult found!");
-            printf("GPG key written to %s\n", conf.output.c_str());
+            printf("GPG key written to %s\n", filename.c_str());
 
-            break;
+            if (!conf.batch_mode)
+                break;
         }
 
         auto t1 = std::chrono::steady_clock::now();
@@ -90,7 +94,7 @@ void print_help(std::map<std::string, std::string> arg_map) {
     printf("  <pattern>                   "
            "Fingerprint pattern to match, for example 'X{8}|(AB){4}'\n");
     printf("  <output>                    "
-           "Save the secret key to this path\n");
+           "Save the secret key(s) to this folder\n");
     printf("  -a, --algorithm <ALGO>      "
            "PGP key algorithm [default: %s]\n",
            arg_map["algorithm"].c_str());
@@ -106,6 +110,9 @@ void print_help(std::map<std::string, std::string> arg_map) {
     printf("  -j, --gpg-thread <N>        "
            "Number of threads to generate keys [default: %s]\n",
            "# of CPUs");
+    printf("  -m, --batch-mode <Y/N>      "
+           "Continue to generate keys even if a match is found [default: %s]\n",
+           "N");
     printf("  -h, --help\n");
 }
 
@@ -117,6 +124,7 @@ int main(int argc, char* argv[]) {
         { "t", "time-offset" },
         { "w", "thread-per-block" },
         { "j", "gpg-thread" },
+        { "m", "batch-mode" },
     };
 
     // default args
@@ -126,6 +134,7 @@ int main(int argc, char* argv[]) {
     arg_map_default["time-offset"] = "15552000";
     arg_map_default["thread-per-block"] = "512";
     arg_map_default["gpg-thread"] = std::to_string(std::max(get_nprocs(), 1));
+    arg_map_default["batch-mode"] = "N";
 
     auto arg_map = arg_map_default;
     std::string next_key = "";
@@ -177,6 +186,8 @@ int main(int argc, char* argv[]) {
         config.time_offset = std::stoul(arg_map.at("time-offset"));
         config.thread_per_block = std::stoul(arg_map.at("thread-per-block"));
         config.gpg_thread = std::stoul(arg_map.at("gpg-thread"));
+        config.batch_mode = arg_map.at("batch-mode")[0] == 'Y' ||
+                            arg_map.at("batch-mode")[0] == 'y';
     } catch (const std::out_of_range &e) {
         fprintf(stderr, "Missing argument!\n\n");
         print_help(arg_map_default);
@@ -184,6 +195,7 @@ int main(int argc, char* argv[]) {
     }
 
     try {
+        mkdir(config.output.c_str(), 0700);
         return _main(config);
     } catch (const std::runtime_error &e) {
         // avoid annoying SIGABRT
